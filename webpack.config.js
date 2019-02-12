@@ -1,60 +1,53 @@
-const path = require("path");
-const fs = require("fs");
-const CleanWebpackPlugin = require("clean-webpack-plugin");
-const AssetsPlugin = require("assets-webpack-plugin");
-const chalk = require("chalk");
-const { xml2json, json2xml } = require("xml-js");
-const ejs = require("ejs");
+const path = require('path');
+const fs = require('fs');
+const CleanWebpackPlugin = require('clean-webpack-plugin');
+const chalk = require('chalk');
+const { xml2json, json2xml } = require('xml-js');
 
 const { log } = console;
 
-const assetsPluginInstance = new AssetsPlugin({
-  update: true,
-  fileTypes: ["js", "jpg", "xhtml"]
-});
-
 const exts = {
-  js: "application/javascript",
-  css: "text/css",
-  xhtml: "application/xhtml+xml",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  gif: "image/gif",
-  svg: "image/svg+xml",
-  ttf: "application/font-sfnt",
-  ttc: "application/font-sfnt",
-  woff: "application/font-woff",
-  woff2: "font/woff2",
-  vtt: "text/vtt",
-  xml: "application/xml",
-  mp4: "video/mp4",
-  mp3: "audio/mp3",
-  m4a: "audio/m4a"
+  js: 'application/javascript',
+  css: 'text/css',
+  xhtml: 'application/xhtml+xml',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+  ttf: 'application/font-sfnt',
+  ttc: 'application/font-sfnt',
+  woff: 'application/font-woff',
+  woff2: 'font/woff2',
+  vtt: 'text/vtt',
+  xml: 'application/xml',
+  mp4: 'video/mp4',
+  mp3: 'audio/mp3',
+  m4a: 'audio/m4a',
 };
 
 class EpubPlugin {
   apply(compiler) {
-    compiler.hooks.done.tap("EPUB Plugin", (
+    compiler.hooks.done.tap('EPUB Plugin', (
       stats /* stats is passed as argument when done hook is tapped.  */
     ) => {
-      fs.unlinkSync("./dist/out.js");
-      log(chalk.red("delete dist/out.js"));
+      fs.unlinkSync('./dist/out.js');
+      log(chalk.red('delete dist/out.js'));
       const assets = stats.compilation.assets;
       const assetMap = Object.keys(assets).map(asset => {
         const assetObj = assets[asset].existsAt;
         const { root, dir, base, ext, name } = path.parse(assetObj);
         return {
-          href: path.relative("./dist/", assetObj),
+          href: path.relative('./dist/', assetObj),
           id: name,
-          "media-type": exts[ext.substr(1)]
+          'media-type': exts[ext.substr(1)],
         };
       });
 
       // log(assetMap);
 
       // old assets
-      const xml = fs.readFileSync("./src/content.opf", "utf8");
+      const xml = fs.readFileSync('./src/content.opf', 'utf8');
       const json = xml2json(xml, { spaces: 2, compact: true });
       const parsedJson = JSON.parse(json);
       const manifest = parsedJson.package.manifest.item;
@@ -68,7 +61,7 @@ class EpubPlugin {
 
       // for now just get all xhtml pages
       const spinePages = assetMap
-        .filter(asset => asset["media-type"] === "application/xhtml+xml")
+        .filter(asset => asset['media-type'] === 'application/xhtml+xml')
         .map(item => ({ _attributes: { idref: item.id } }));
 
       log(spinePages);
@@ -104,61 +97,60 @@ class EpubPlugin {
 }
 
 module.exports = {
-  entry: "./index.js",
+  entry: './index.js',
   output: {
-    filename: "out.js",
-    path: path.resolve(__dirname, "dist")
+    filename: 'out.js',
+    path: path.resolve(__dirname, 'dist'),
   },
   module: {
     rules: [
       {
         test: /\.xhtml$/,
         use: [
-          "file-loader",
-          "extract-loader",
+          'file-loader',
+          'extract-loader',
           {
-            loader: "html-loader",
+            loader: 'html-loader',
             options: {
-              attrs: ["img:src", "link:href", "audio:src"]
-            }
-          }
-        ]
+              attrs: ['img:src', 'link:href', 'audio:src'],
+            },
+          },
+        ],
       },
       {
         test: /\.css$/,
         use: [
-          "file-loader",
-          "extract-loader",
+          'file-loader',
+          'extract-loader',
           {
-            loader: "css-loader"
-          }
-        ]
+            loader: 'css-loader',
+          },
+        ],
       },
       {
         test: /\.mp3$/,
-        use: ["file-loader"]
+        use: ['file-loader'],
       },
       {
         test: /\.(png|jpg|gif)$/,
         use: [
           {
-            loader: "file-loader"
-          }
-        ]
+            loader: 'file-loader',
+          },
+        ],
       },
       {
         test: /\.(woff(2)?|ttf|eot|svg)(\?v=\d+\.\d+\.\d+)?$/,
         use: [
           {
-            loader: "file-loader"
-          }
-        ]
-      }
-    ]
+            loader: 'file-loader',
+          },
+        ],
+      },
+    ],
   },
   plugins: [
-    assetsPluginInstance,
-    new CleanWebpackPlugin(["dist"]),
-    new EpubPlugin({ options: true })
-  ]
+    new CleanWebpackPlugin(['dist']),
+    new EpubPlugin({ options: true }),
+  ],
 };
