@@ -114,6 +114,7 @@ module.exports = {
   },
   module: {
     rules: [
+      // TODO: handle templating languages
       {
         test: /\.xhtml$/,
         use: [
@@ -127,6 +128,7 @@ module.exports = {
           },
         ],
       },
+      // TODO: handle preprocessors
       {
         test: /\.css$/,
         use: [
@@ -141,6 +143,7 @@ module.exports = {
         test: /\.mp3$/,
         use: ['file-loader'],
       },
+      // TODO: optionally optimize images
       {
         test: /\.(png|jpg|gif)$/,
         use: [
