@@ -6,7 +6,17 @@ const chalk = require('chalk');
 
 const { log } = console;
 
-const exts = {
+/**
+ * Constants for testing
+ * TODO: Some of these need to be determined dynamically or from config options
+ */
+
+const SRC_DIRECTORY = './src';
+const OPF_PATH = './src/EPUB/content.opf';
+const DIST_PATH = './dist/';
+const OPF_DIRNAME = 'EPUB';
+const OPF_DIST_DIRECTORY = './dist/EPUB/';
+const EXTS = {
   js: 'application/javascript',
   css: 'text/css',
   xhtml: 'application/xhtml+xml',
@@ -27,12 +37,19 @@ const exts = {
 };
 
 class EpubPlugin {
+  constructor(options) {
+    this.options = {
+      ...{
+        /** defaults */
+      },
+      ...options,
+    };
+  }
   // eslint-disable-next-line
   apply(compiler) {
     compiler.hooks.done.tap('EPUB Plugin', (
       stats /* stats is passed as argument when done hook is tapped.  */
     ) => {
-      const OPF_PATH = './src/content.opf';
       const XML_JS_OPTIONS = {
         spaces: 2,
         compact: true,
@@ -47,6 +64,11 @@ class EpubPlugin {
       // const spineFromOpf = jsFromOpf.package.spine.itemref;
 
       const { assets } = stats.compilation;
+
+      log(
+        stats.compilation.fileDependencies._cache,
+        Object.keys(stats.compilation.fileDependencies)
+      );
 
       /**
        * TODO: Create an api for merging updates from assets
@@ -67,9 +89,9 @@ class EpubPlugin {
         const { root, dir, base, ext, name } = path.parse(assetObj);
         return {
           _attributes: {
-            href: path.relative('./dist/', assetObj),
+            href: path.relative(OPF_DIST_DIRECTORY, assetObj),
             id: name,
-            'media-type': exts[ext.substr(1)],
+            'media-type': EXTS[ext.substr(1)],
           },
         };
       });
@@ -80,7 +102,7 @@ class EpubPlugin {
       const spineFromAssets = manifestItemFromAssets
         .filter(
           ({ _attributes }) =>
-            _attributes['media-type'] === exts[PAGES_EXTENSION]
+            _attributes['media-type'] === EXTS[PAGES_EXTENSION]
         )
         .map(({ _attributes }) => ({ _attributes: { idref: _attributes.id } }));
 
@@ -94,23 +116,30 @@ class EpubPlugin {
           },
           spine: {
             ...jsFromOpf.package.spine,
-            itemref: spineFromAssets,
+            itemref: spineFromAssets.reverse(),
           },
         },
       };
 
       const updatedOpfXml = js2xml(updatedOpf, XML_JS_OPTIONS);
 
-      fs.writeFileSync('./dist/content.opf', updatedOpfXml);
+      fs.writeFileSync(`${OPF_DIST_DIRECTORY}/content.opf`, updatedOpfXml);
     });
   }
 }
 
+const LOADER_OPTIONS = {
+  // name: '[folder]/[name].[ext]',
+  // context ensures that 'src' isn't output as part of the path
+  context: OPF_DIST_DIRECTORY,
+  name: `[hash].[ext]`,
+};
+
 module.exports = {
   entry: './index.js',
   output: {
-    filename: 'out.js',
-    path: path.resolve(__dirname, 'dist'),
+    path: path.resolve(__dirname, OPF_DIST_DIRECTORY),
+    filename: `js/[name].js`,
   },
   module: {
     rules: [
@@ -118,7 +147,10 @@ module.exports = {
       {
         test: /\.xhtml$/,
         use: [
-          'file-loader',
+          {
+            loader: 'file-loader',
+            options: LOADER_OPTIONS,
+          },
           'extract-loader',
           {
             loader: 'html-loader',
@@ -132,7 +164,10 @@ module.exports = {
       {
         test: /\.css$/,
         use: [
-          'file-loader',
+          {
+            loader: 'file-loader',
+            options: LOADER_OPTIONS,
+          },
           'extract-loader',
           {
             loader: 'css-loader',
@@ -141,7 +176,12 @@ module.exports = {
       },
       {
         test: /\.mp3$/,
-        use: ['file-loader'],
+        use: [
+          {
+            loader: 'file-loader',
+            options: LOADER_OPTIONS,
+          },
+        ],
       },
       // TODO: optionally optimize images
       {
@@ -149,6 +189,7 @@ module.exports = {
         use: [
           {
             loader: 'file-loader',
+            options: LOADER_OPTIONS,
           },
         ],
       },
@@ -157,13 +198,14 @@ module.exports = {
         use: [
           {
             loader: 'file-loader',
+            options: LOADER_OPTIONS,
           },
         ],
       },
     ],
   },
   plugins: [
-    new CleanWebpackPlugin(['dist']),
+    new CleanWebpackPlugin([DIST_PATH]),
     new EpubPlugin({ options: true }),
   ],
 };
