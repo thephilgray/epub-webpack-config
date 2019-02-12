@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<package xmlns="http://www.idpf.org/2007/opf"
+    prefix="ibooks: http://vocabulary.itunes.apple.com/rdf/ibooks/vocabulary-extensions-1.0/ rdf: http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    unique-identifier="p9781107454729" version="3.0" xml:lang="en">
+    <!--prefix='ibooks' above necessary for iBooks versioning-->
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:type>education</dc:type>
+        <dc:title>GCSE English Literature for AQA: Poetry Student Book</dc:title>
+        <dc:identifier id="p9781107454729">9781107454729</dc:identifier>
+        <dc:identifier id="isbn-id">urn:isbn:9781107454729</dc:identifier>
+        <dc:creator>Cambridge University Press</dc:creator>
+        <dc:publisher>Cambridge University Press</dc:publisher>
+        <dc:language>en</dc:language>
+        <dc:source id="src">9781107454729</dc:source>
+        <meta property="identifier-type" refines="#src" scheme="onix:codelist5">15</meta>
+        <meta property="source-of" refines="#src">pagination</meta>
+        <meta name="cover" content="cover-image" />
+        <meta property="ibooks:specified-fonts">true</meta>
+        <meta property="dcterms:modified">2016-02-25T09:30:00Z</meta>
+        <meta property="schema:audience" id="aud01">schema:audience</meta>
+        <meta refines="#aud01" property="rdf:type">http://www.schema.org/EducationalAudience</meta>
+        <meta property="schema:educationalRole" refines="#aud01">student</meta>
+        <meta property="schema:typicalAgeRange">16-18</meta>
+        <meta property="schema:accessibilityFeature">tableOfContents</meta>
+        <meta property="schema:accessibilityFeature">alternativeText</meta>
+        <meta property="schema:accessibilityFeature">printPageNumbers</meta>
+        <meta property="schema:accessibilityFeature">readingOrder</meta>
+        <meta property="schema:accessibilityFeature">structuralNavigation</meta>
+    </metadata>
+    <manifest>
+        <% items.forEach(function(item) {%>
+            <item href="<%=item.href%>" id="<%=item.id%>" media-type="<%=item['media-type']%>" />
+        <% }); %>
+    </manifest>
+
+    <spine toc="toc">
+        <% pages.forEach(function(page) {%>
+        <itemref idref="<%=page.idref%>"/>
+        <% }); %>
+    </spine>
+
+</package>
