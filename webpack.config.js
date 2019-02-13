@@ -102,6 +102,29 @@ module.exports = async () => {
           path.resolve(process.cwd(), 'manifest.json')
         );
 
+        // TODO: use it!
+        // create a more useful manifestMap: {[hashed-filename]: { href: '', filename: '', id: '', hashedId: '' }}
+        // const betterManifestMap = Object.keys(manifestMap).reduce(
+        //   (acc, curr) => {
+        //     const existingItem = manifestItemFromOpf.find(({ _attributes }) => {
+        //       const { base } = path.parse(_attributes.href);
+        //       return base === curr;
+        //     });
+        //     // include more information about the item used in content.opf, including its original id
+        //     acc[manifestMap[curr]] = {
+        //       href: existingItem ? existingItem._attributes.href : curr,
+        //       filename: existingItem
+        //         ? path.basename(existingItem._attributes.href)
+        //         : curr,
+        //       id: existingItem ? existingItem._attributes.id : curr,
+        //       hashedId: manifestMap[curr].split('.').shift(),
+        //     };
+        //     return acc;
+        //     // const {base} = path.parse();
+        //   },
+        //   {}
+        // );
+
         const opfManifestItemAttributesMap = manifestItemFromOpf.reduce(
           (acc, curr) => {
             const { base } = path.parse(
@@ -118,14 +141,12 @@ module.exports = async () => {
           return acc;
         }, {});
 
-        log(opfSpineItemAttributesMap);
-
         // TODO: allow this list to be ordered and refined by a user-supplied config, merging over it again
         // TODO: filter out generated files like main.js (unless js is required) and manifest
 
         const manifestItemFromAssets = Object.keys(assets).map(asset => {
           const assetObj = assets[asset].existsAt;
-          const { root, dir, base, ext, name } = path.parse(assetObj);
+          const { base, ext, name } = path.parse(assetObj);
           // invert manifestMap so that the new filename is the key and the old filename is the value
           const manifestMapId = invert(manifestMap)[base];
           // the attributes for the item from the source opf
@@ -143,6 +164,7 @@ module.exports = async () => {
 
         // for now just get all xhtml pages
         // TODO: allow this list to be ordered and refined by a user-supplied config
+        // TODO: order alpha and then by original order and then by user-supplied
         const spineFromAssets = manifestItemFromAssets
           .filter(
             ({ _attributes }) =>
@@ -154,7 +176,6 @@ module.exports = async () => {
             const manifestMapId = invert(manifestMap)[base];
             const spineIdref = opfManifestItemAttributesMap[manifestMapId].id;
             const oldAttributes = opfSpineItemAttributesMap[spineIdref];
-            log(spineIdref);
 
             return { _attributes: { ...oldAttributes, idref: _attributes.id } };
           });
