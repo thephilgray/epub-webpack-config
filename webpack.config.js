@@ -77,7 +77,7 @@ module.exports = async () => {
         const jsFromOpf = xml2js(xmlFromOpf, XML_JS_OPTIONS);
 
         const manifestItemFromOpf = jsFromOpf.package.manifest.item;
-        // const spineFromOpf = jsFromOpf.package.spine.itemref;
+        const spineFromOpf = jsFromOpf.package.spine.itemref;
 
         const { assets } = stats.compilation;
 
@@ -113,7 +113,15 @@ module.exports = async () => {
           {}
         );
 
+        const opfSpineItemAttributesMap = spineFromOpf.reduce((acc, curr) => {
+          acc[curr._attributes.idref] = curr._attributes;
+          return acc;
+        }, {});
+
+        log(opfSpineItemAttributesMap);
+
         // TODO: allow this list to be ordered and refined by a user-supplied config, merging over it again
+        // TODO: filter out generated files like main.js (unless js is required) and manifest
 
         const manifestItemFromAssets = Object.keys(assets).map(asset => {
           const assetObj = assets[asset].existsAt;
@@ -133,7 +141,6 @@ module.exports = async () => {
           };
         });
 
-        // TODO: handle properties like linear
         // for now just get all xhtml pages
         // TODO: allow this list to be ordered and refined by a user-supplied config
         const spineFromAssets = manifestItemFromAssets
@@ -141,9 +148,16 @@ module.exports = async () => {
             ({ _attributes }) =>
               _attributes['media-type'] === EXTS[PAGES_EXTENSION]
           )
-          .map(({ _attributes }) => ({
-            _attributes: { idref: _attributes.id },
-          }));
+          .map(({ _attributes }) => {
+            // the same technique used to merge the manifest items but this time to lookup the original properties, we must first get the id from the corresponding manifest item
+            const { base } = path.parse(_attributes.href);
+            const manifestMapId = invert(manifestMap)[base];
+            const spineIdref = opfManifestItemAttributesMap[manifestMapId].id;
+            const oldAttributes = opfSpineItemAttributesMap[spineIdref];
+            log(spineIdref);
+
+            return { _attributes: { ...oldAttributes, idref: _attributes.id } };
+          });
 
         // merge manifestItemFromAssets and spineFromAssets into the the new opf
         const updatedOpf = {
@@ -155,7 +169,7 @@ module.exports = async () => {
             },
             spine: {
               ...jsFromOpf.package.spine,
-              itemref: spineFromAssets.reverse(),
+              itemref: spineFromAssets,
             },
           },
         };
@@ -171,7 +185,7 @@ module.exports = async () => {
     // name: '[folder]/[name].[ext]',
     // context ensures that 'src' isn't output as part of the path
     context: OPF_DIST_DIRECTORY,
-    name: `[hash].[ext]`,
+    name: `[hash]_[name].[ext]`,
   };
 
   return {
