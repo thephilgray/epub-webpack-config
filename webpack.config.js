@@ -7,9 +7,11 @@ const chalk = require('chalk');
 const glob = require('glob');
 const ManifestPlugin = require('webpack-manifest-plugin');
 const invert = require('lodash/invert');
+const ejs = require('ejs');
 
 const { log } = console;
 const promiseGlob = promisify(glob);
+const promiseEjsRender = promisify(ejs.render);
 
 module.exports = async () => {
   /**
@@ -19,17 +21,22 @@ module.exports = async () => {
   const SRC_DIRECTORY = './src';
   const DIST_PATH = './dist';
   const PAGES_EXTENSION = 'xhtml';
+  const TEMPLATE_PATH = './templates';
 
-  /** TODO: add a fallback to generate the OPF file from template, in case one hasn't been supplied */
   const opf = await promiseGlob(`${SRC_DIRECTORY}/**/*.opf`);
+  /** add a fallback to generate the OPF file from template, in case one hasn't been supplied */
+  const SRC_OPF_EXISTS = Boolean(opf[0]);
   const OPF_PATH = opf[0] || SRC_DIRECTORY;
   // assign a default name OEBPS in case one was not included
   const OPF_DIRNAME =
-    path.dirname(OPF_PATH) === SRC_DIRECTORY
+    path.dirname(OPF_PATH) === SRC_DIRECTORY || !SRC_OPF_EXISTS
       ? 'OEBPS'
       : path.relative(SRC_DIRECTORY, path.dirname(OPF_PATH));
 
   const OPF_DIST_DIRECTORY = `./${path.join(DIST_PATH, OPF_DIRNAME)}`;
+
+  // filter out generated files like main.js (unless js is required) and manifest
+  const FILTERED = ['manifest.json', 'main.js'];
 
   const EXTS = {
     js: 'application/javascript',
@@ -48,7 +55,7 @@ module.exports = async () => {
     xml: 'application/xml',
     mp4: 'video/mp4',
     mp3: 'audio/mp3',
-    m4a: 'audio/m4a',
+    m4a: 'audio/m4a'
   };
 
   class EpubPlugin {
@@ -57,7 +64,7 @@ module.exports = async () => {
         ...{
           /** defaults */
         },
-        ...options,
+        ...options
       };
     }
     // eslint-disable-next-line
@@ -68,17 +75,30 @@ module.exports = async () => {
         const XML_JS_OPTIONS = {
           spaces: 2,
           compact: true,
-          ignoreComment: true,
+          ignoreComment: true
         };
 
-        // TODO: handle cases in which the src code does not include an opf
         // Get data from source opf
-        const xmlFromOpf = fs.readFileSync(OPF_PATH, 'utf8');
+        // if there's no opf included, read it from template
+        const xmlFromOpf = SRC_OPF_EXISTS
+          ? fs.readFileSync(OPF_PATH, 'utf8')
+          : fs.readFileSync(path.resolve(TEMPLATE_PATH, 'content.opf'));
         const jsFromOpf = xml2js(xmlFromOpf, XML_JS_OPTIONS);
 
-        const manifestItemFromOpf = jsFromOpf.package.manifest.item;
-        const spineFromOpf = jsFromOpf.package.spine.itemref;
+        const manifestItemFromOpf = jsFromOpf.package.manifest.item || [];
+        const spineFromOpf = jsFromOpf.package.spine.itemref || [];
 
+        // TODO: if there's no nav, we need to generate one and add it to assets
+
+        // log(manifestItemFromOpf);
+        // const isNav =
+        //   manifestItemFromOpf.filter(
+        //     item =>
+        //       item._attributes &&
+        //       item._attributes.properties &&
+        //       item._attributes.properties.split(' ').indexOf('nav') > 0
+        //   ).length > 0;
+        // log(isNav);
         const { assets } = stats.compilation;
 
         // log(
@@ -142,29 +162,31 @@ module.exports = async () => {
         }, {});
 
         // TODO: allow this list to be ordered and refined by a user-supplied config, merging over it again
-        // TODO: filter out generated files like main.js (unless js is required) and manifest
 
-        const manifestItemFromAssets = Object.keys(assets).map(asset => {
-          const assetObj = assets[asset].existsAt;
-          const { base, ext, name } = path.parse(assetObj);
-          // invert manifestMap so that the new filename is the key and the old filename is the value
-          const manifestMapId = invert(manifestMap)[base];
-          // the attributes for the item from the source opf
-          const oldAttributes = opfManifestItemAttributesMap[manifestMapId];
+        const manifestItemFromAssets = Object.keys(assets)
+          .filter(asset => FILTERED.indexOf(path.basename(asset)) < 0)
+          .map(asset => {
+            const assetObj = assets[asset].existsAt;
+            const { base, ext, name } = path.parse(assetObj);
+            // invert manifestMap so that the new filename is the key and the old filename is the value
+            const manifestMapId = invert(manifestMap)[base];
+            // the attributes for the item from the source opf
+            const oldAttributes = opfManifestItemAttributesMap[manifestMapId];
 
-          return {
-            _attributes: {
-              ...oldAttributes,
-              href: path.relative(OPF_DIST_DIRECTORY, assetObj),
-              id: name,
-              'media-type': EXTS[ext.substr(1)],
-            },
-          };
-        });
+            return {
+              _attributes: {
+                ...oldAttributes,
+                href: path.relative(OPF_DIST_DIRECTORY, assetObj),
+                id: name,
+                'media-type': EXTS[ext.substr(1)]
+              }
+            };
+          });
 
         // for now just get all xhtml pages
         // TODO: allow this list to be ordered and refined by a user-supplied config
         // TODO: order alpha and then by original order and then by user-supplied
+
         const spineFromAssets = manifestItemFromAssets
           .filter(
             ({ _attributes }) =>
@@ -174,8 +196,10 @@ module.exports = async () => {
             // the same technique used to merge the manifest items but this time to lookup the original properties, we must first get the id from the corresponding manifest item
             const { base } = path.parse(_attributes.href);
             const manifestMapId = invert(manifestMap)[base];
-            const spineIdref = opfManifestItemAttributesMap[manifestMapId].id;
-            const oldAttributes = opfSpineItemAttributesMap[spineIdref];
+            const spineIdref = opfManifestItemAttributesMap[manifestMapId]
+              ? opfManifestItemAttributesMap[manifestMapId].id
+              : null;
+            const oldAttributes = opfSpineItemAttributesMap[spineIdref] || {};
 
             return { _attributes: { ...oldAttributes, idref: _attributes.id } };
           });
@@ -186,18 +210,81 @@ module.exports = async () => {
           package: {
             ...jsFromOpf.package,
             manifest: {
-              item: manifestItemFromAssets,
+              item: manifestItemFromAssets
             },
             spine: {
               ...jsFromOpf.package.spine,
-              itemref: spineFromAssets,
-            },
-          },
+              itemref: spineFromAssets
+            }
+          }
         };
 
-        const updatedOpfXml = js2xml(updatedOpf, XML_JS_OPTIONS);
+        /**
+         *
+         * Scaffolding - can be async
+         *
+         */
 
-        fs.writeFileSync(`${OPF_DIST_DIRECTORY}/content.opf`, updatedOpfXml);
+        const updatedOpfXml = js2xml(updatedOpf, XML_JS_OPTIONS);
+        // create the directory if it hasn't been emitted by webpack yet
+        await fs.ensureDir(OPF_DIST_DIRECTORY);
+        await fs.writeFile(`${OPF_DIST_DIRECTORY}/content.opf`, updatedOpfXml);
+
+        // copy or generate the mimetype and META-INF/container.xml
+        const mimetype = await promiseGlob(`${SRC_DIRECTORY}/mimetype`);
+        const containerxml = await promiseGlob(
+          `${SRC_DIRECTORY}/META-INF/container.xml`
+        );
+        const srcMimetypeExists = Boolean(mimetype[0]);
+        const srcContainerXmlExists = Boolean(containerxml[0]);
+
+        /* if the mimetype exists in source, just copy it to dist; otherwise, write it to dist */
+
+        fs.ensureDirSync(DIST_PATH);
+        if (srcMimetypeExists) {
+          await fs.copyFile(mimetype[0], `${DIST_PATH}/mimetype`);
+        } else {
+          await fs.writeFile(`${DIST_PATH}/mimetype`, 'application/epub+zip');
+          log(`${DIST_PATH}/mimetype written`);
+        }
+
+        /* if the container.xml file exists in source, copy it to dist; otherwise, compile and write it from templates */
+
+        await fs.ensureDir(`${DIST_PATH}/META-INF/`);
+        if (srcContainerXmlExists) {
+          await fs.copyFile(
+            containerxml[0],
+            `${DIST_PATH}/META-INF/container.xml`
+          );
+        } else {
+          const renderedContainerXml = await ejs.renderFile(
+            `${TEMPLATE_PATH}/container.ejs`,
+            {
+              RELATIVE_OPF_PATH: path.relative(
+                DIST_PATH,
+                `${OPF_DIST_DIRECTORY}/content.opf`
+              )
+            },
+            { async: true }
+          );
+          await fs.writeFile(
+            `${DIST_PATH}/META-INF/container.xml`,
+            renderedContainerXml
+          );
+          log(`${DIST_PATH}/META-INF/container.xml written`);
+        }
+
+        /* hack: delete filtered files */
+        // TODO: Hopefully there's a webpack way to remove these from bundling
+        glob(
+          `/**/*/{${FILTERED.join(',')}}`,
+          { root: DIST_PATH },
+          (err, files) => {
+            files.forEach(file => fs.unlinkSync(file));
+          }
+        );
+
+        /*=====  End of Scaffold Function  ======*/
       });
     }
   }
@@ -206,14 +293,14 @@ module.exports = async () => {
     // name: '[folder]/[name].[ext]',
     // context ensures that 'src' isn't output as part of the path
     context: OPF_DIST_DIRECTORY,
-    name: `[hash]_[name].[ext]`,
+    name: `[name].[ext]`
   };
 
   return {
     entry: './index.js',
     output: {
       path: path.resolve(__dirname, OPF_DIST_DIRECTORY),
-      filename: `[name].js`,
+      filename: `[name].js`
     },
     module: {
       rules: [
@@ -223,16 +310,16 @@ module.exports = async () => {
           use: [
             {
               loader: 'file-loader',
-              options: LOADER_OPTIONS,
+              options: LOADER_OPTIONS
             },
             'extract-loader',
             {
               loader: 'html-loader',
               options: {
-                attrs: ['img:src', 'link:href', 'audio:src'],
-              },
-            },
-          ],
+                attrs: ['img:src', 'link:href', 'audio:src']
+              }
+            }
+          ]
         },
         // TODO: handle preprocessors
         {
@@ -240,22 +327,22 @@ module.exports = async () => {
           use: [
             {
               loader: 'file-loader',
-              options: LOADER_OPTIONS,
+              options: LOADER_OPTIONS
             },
             'extract-loader',
             {
-              loader: 'css-loader',
-            },
-          ],
+              loader: 'css-loader'
+            }
+          ]
         },
         {
           test: /\.mp3$/,
           use: [
             {
               loader: 'file-loader',
-              options: LOADER_OPTIONS,
-            },
-          ],
+              options: LOADER_OPTIONS
+            }
+          ]
         },
         // TODO: optionally optimize images
         {
@@ -263,27 +350,27 @@ module.exports = async () => {
           use: [
             {
               loader: 'file-loader',
-              options: LOADER_OPTIONS,
-            },
-          ],
+              options: LOADER_OPTIONS
+            }
+          ]
         },
         {
           test: /\.(woff(2)?|ttf|eot|svg)(\?v=\d+\.\d+\.\d+)?$/,
           use: [
             {
               loader: 'file-loader',
-              options: LOADER_OPTIONS,
-            },
-          ],
-        },
-      ],
+              options: LOADER_OPTIONS
+            }
+          ]
+        }
+      ]
     },
     plugins: [
       new CleanWebpackPlugin([DIST_PATH]),
       new EpubPlugin({ options: true }),
       new ManifestPlugin({
-        fileName: path.resolve(SRC_DIRECTORY, '..', 'manifest.json'),
-      }),
-    ],
+        fileName: path.resolve(SRC_DIRECTORY, '..', 'manifest.json')
+      })
+    ]
   };
 };
