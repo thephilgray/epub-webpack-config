@@ -6,7 +6,7 @@
   "scripts": {
     "build": "webpack",
     "watch": "webpack --watch &",
-    "serve": "launch-epub dist",
+    "serve": "launch-epub build",
     "dev": "npm run watch && npm run serve"
   },
   "keywords": [],

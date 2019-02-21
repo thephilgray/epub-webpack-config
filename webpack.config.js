@@ -20,7 +20,7 @@ module.exports = async () => {
    * TODO: Some of these need to be determined dynamically or from config options
    */
   const SRC_DIRECTORY = './src';
-  const DIST_PATH = './dist';
+  const DIST_PATH = './build';
   const PAGES_EXTENSION = 'xhtml';
   const TEMPLATE_PATH = './templates';
 
@@ -98,22 +98,14 @@ module.exports = async () => {
           ? [].concat(jsFromOpf.package.spine.itemref)
           : []; // must be type array
 
+        // TODO: create another opf object from data.json or data.yaml which merges after opf
+
         const { assets } = stats.compilation;
 
         // log(
         //   stats.compilation.fileDependencies,
         //   Object.keys(stats.compilation.fileDependencies)
         // );
-
-        /**
-         * TODO: Create an api for merging updates from assets
-         *
-         *  1. remove: filter out and log any src opf items that no longer exist in assets
-         *  2. add: log and add new assets which were not found in the original opf
-         *  3. update: when an item is found to exist in both the src opf and the assets, log and merge it
-         *  4. getUpdatedOpf: return the updated opf object
-         *
-         * */
 
         // original filenames mapped to new filenames
         // TODO: is there any way to get this data without relying on the manifest plugin and writing to file?
@@ -209,6 +201,8 @@ module.exports = async () => {
 
             return { _attributes: { ...oldAttributes, idref: _attributes.id } };
           });
+
+        // TODO: create a function that takes a payload and returns the updatedOpf
 
         // merge manifestItemFromAssets and spineFromAssets into the the new opf
         const updatedOpf = {
@@ -405,7 +399,10 @@ module.exports = async () => {
           `/**/*/{${FILTERED.join(',')}}`,
           { root: DIST_PATH },
           (err, files) => {
-            files.forEach(file => fs.unlinkSync(file));
+            files.forEach(file => {
+              if (!fs.pathExistsSync(file)) return;
+              fs.unlinkSync(file);
+            });
           }
         );
 
@@ -491,7 +488,7 @@ module.exports = async () => {
       ]
     },
     plugins: [
-      new CleanWebpackPlugin([DIST_PATH], { watch: true }),
+      new CleanWebpackPlugin([DIST_PATH]),
       new EpubPlugin({ options: true }),
       new ManifestPlugin({
         fileName: path.resolve(SRC_DIRECTORY, '..', 'manifest.json')
