@@ -8,6 +8,7 @@ const glob = require('glob');
 const ManifestPlugin = require('webpack-manifest-plugin');
 const invert = require('lodash/invert');
 const ejs = require('ejs');
+const { getTocDataFromArrayOfHtmlPathsOrStrings } = require('toc-generator');
 
 const { log } = console;
 const promiseGlob = promisify(glob);
@@ -37,6 +38,8 @@ module.exports = async () => {
 
   // filter out generated files like main.js (unless js is required) and manifest
   const FILTERED = ['manifest.json', 'main.js'];
+
+  const TOC_LEVELS = 2;
 
   const EXTS = {
     js: 'application/javascript',
@@ -250,29 +253,49 @@ module.exports = async () => {
           log('nav not detected');
           // compile toc.ncx and toc.xhtml from template, sending data {title: '', identifier: '', pages: [{order: 1, level: 1, title: '', href: ''}]}
           // get pages from spine and construct data for template
-          const pagesMap = updatedManifest.reduce((acc, curr, i) => {
-            const fileExistsInSpine = id =>
-              updatedSpine.filter(
-                spineItem => spineItem._attributes.idref === id
-              ).length === 1;
-            if (!fileExistsInSpine(curr._attributes.id)) {
-              return acc;
-            }
+          let tocItemIncrement = 1;
+          const pagesMapPromise = updatedManifest.reduce(
+            async (acc, curr, i) => {
+              const resolvedAcc = await acc;
+              const fileExistsInSpine = id =>
+                updatedSpine.filter(
+                  spineItem => spineItem._attributes.idref === id
+                ).length === 1;
+              if (!fileExistsInSpine(curr._attributes.id)) {
+                return resolvedAcc;
+              }
 
-            // get the index of the current manifest item from the spine
-            const order =
-              updatedSpine.findIndex(
-                item => item._attributes.idref === curr._attributes.id
-              ) + 1;
-            const page = {
-              href: curr._attributes.href,
-              order,
-              title: `Page title for: ${curr._attributes.href}`, // TODO: get from raw source code
-              level: 1 // TODO: get from raw source code
-            };
-            acc.push(page);
-            return acc;
-          }, []);
+              // get the index of the current manifest item from the spine
+              // const order =
+              //   updatedSpine.findIndex(
+              //     item => item._attributes.idref === curr._attributes.id
+              //   ) + tocItemIncrement;
+
+              const pageTocData = await getTocDataFromArrayOfHtmlPathsOrStrings(
+                [].concat(assets[curr._attributes.href]._value.toString()),
+                TOC_LEVELS
+              );
+
+              const page = pageTocData.map((heading, headingIndex) => {
+                const order = tocItemIncrement++ + headingIndex;
+                return {
+                  href: heading.id
+                    ? `${curr._attributes.href}#${heading.id}`
+                    : curr._attributes.href,
+                  order,
+                  title: heading.text,
+                  level: heading.level
+                };
+              });
+
+              // TODO: include pages even if there are no headings; should be optional
+
+              return [...resolvedAcc, ...page];
+            },
+            Promise.resolve([])
+          );
+
+          const pagesMap = await pagesMapPromise;
 
           const tocData = {
             title: updatedTitle,
