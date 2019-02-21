@@ -420,7 +420,6 @@ module.exports = async () => {
   };
 
   return {
-    // watch: true,
     entry: './index.js',
     output: {
       path: path.resolve(__dirname, OPF_DIST_DIRECTORY),
