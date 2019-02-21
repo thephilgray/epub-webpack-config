@@ -491,7 +491,7 @@ module.exports = async () => {
       ]
     },
     plugins: [
-      new CleanWebpackPlugin([DIST_PATH]),
+      new CleanWebpackPlugin([DIST_PATH], { watch: true }),
       new EpubPlugin({ options: true }),
       new ManifestPlugin({
         fileName: path.resolve(SRC_DIRECTORY, '..', 'manifest.json')
