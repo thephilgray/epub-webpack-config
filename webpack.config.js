@@ -276,8 +276,8 @@ module.exports = async () => {
                 TOC_LEVELS
               );
 
-              const page = pageTocData.map((heading, headingIndex) => {
-                const order = tocItemIncrement++ + headingIndex;
+              const page = pageTocData.map(heading => {
+                const order = tocItemIncrement++;
                 return {
                   href: heading.id
                     ? `${curr._attributes.href}#${heading.id}`
@@ -296,6 +296,8 @@ module.exports = async () => {
           );
 
           const pagesMap = await pagesMapPromise;
+
+          log(pagesMap);
 
           const tocData = {
             title: updatedTitle,
