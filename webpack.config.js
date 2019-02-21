@@ -71,8 +71,14 @@ module.exports = async () => {
         ...options
       };
     }
+
+    // TODO: make a general method for returning a new opf
+    getUpdatedOpf(oldOpf, payload) {}
+
     // eslint-disable-next-line
     apply(compiler) {
+      // TODO: move some of the done code to emit or another hook before done; where we can compile to template before writing
+
       compiler.hooks.done.tap('EPUBPlugin', async (
         stats /* stats is passed as argument when done hook is tapped.  */
       ) => {
@@ -291,8 +297,6 @@ module.exports = async () => {
 
           const pagesMap = await pagesMapPromise;
 
-          log(pagesMap);
-
           const tocData = {
             title: updatedTitle,
             identifier: updatedIdentifier,
@@ -457,6 +461,7 @@ module.exports = async () => {
             }
           ]
         },
+
         {
           test: /\.mp3$/,
           use: [
