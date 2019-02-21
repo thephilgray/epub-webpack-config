@@ -3,3 +3,4 @@ src
 dist
 .DS_Store
 manifest.json
+.epub
