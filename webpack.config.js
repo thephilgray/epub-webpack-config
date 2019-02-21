@@ -55,7 +55,8 @@ module.exports = async () => {
     xml: 'application/xml',
     mp4: 'video/mp4',
     mp3: 'audio/mp3',
-    m4a: 'audio/m4a'
+    m4a: 'audio/m4a',
+    ncx: 'application/x-dtbncx+xml'
   };
 
   class EpubPlugin {
@@ -69,7 +70,7 @@ module.exports = async () => {
     }
     // eslint-disable-next-line
     apply(compiler) {
-      compiler.hooks.done.tap('EPUB Plugin', async (
+      compiler.hooks.done.tap('EPUBPlugin', async (
         stats /* stats is passed as argument when done hook is tapped.  */
       ) => {
         const XML_JS_OPTIONS = {
@@ -83,22 +84,17 @@ module.exports = async () => {
         const xmlFromOpf = SRC_OPF_EXISTS
           ? fs.readFileSync(OPF_PATH, 'utf8')
           : fs.readFileSync(path.resolve(TEMPLATE_PATH, 'content.opf'));
-        const jsFromOpf = xml2js(xmlFromOpf, XML_JS_OPTIONS);
 
-        const manifestItemFromOpf = jsFromOpf.package.manifest.item || [];
-        const spineFromOpf = jsFromOpf.package.spine.itemref || [];
+        const jsFromOpf = xml2js(xmlFromOpf, XML_JS_OPTIONS); // type object
 
-        // TODO: if there's no nav, we need to generate one and add it to assets
+        const manifestItemFromOpf = jsFromOpf.package.manifest.item
+          ? [].concat(jsFromOpf.package.manifest.item)
+          : []; // must be type array
 
-        // log(manifestItemFromOpf);
-        // const isNav =
-        //   manifestItemFromOpf.filter(
-        //     item =>
-        //       item._attributes &&
-        //       item._attributes.properties &&
-        //       item._attributes.properties.split(' ').indexOf('nav') > 0
-        //   ).length > 0;
-        // log(isNav);
+        const spineFromOpf = jsFromOpf.package.spine.itemref
+          ? [].concat(jsFromOpf.package.spine.itemref)
+          : []; // must be type array
+
         const { assets } = stats.compilation;
 
         // log(
@@ -145,21 +141,28 @@ module.exports = async () => {
         //   {}
         // );
 
-        const opfManifestItemAttributesMap = manifestItemFromOpf.reduce(
-          (acc, curr) => {
+        /* TODO: improve and or combine maps */
+
+        const createManifestMap = manifestItem =>
+          manifestItem.reduce((acc, curr) => {
             const { base } = path.parse(
               path.resolve(OPF_DIRNAME, curr._attributes.href)
             );
             acc[base] = curr._attributes;
             return acc;
-          },
-          {}
+          }, {});
+
+        const createSpineItemMap = spineItemref =>
+          spineItemref.reduce((acc, curr) => {
+            acc[curr._attributes.idref] = curr._attributes;
+            return acc;
+          }, {});
+
+        const opfManifestItemAttributesMap = createManifestMap(
+          manifestItemFromOpf
         );
 
-        const opfSpineItemAttributesMap = spineFromOpf.reduce((acc, curr) => {
-          acc[curr._attributes.idref] = curr._attributes;
-          return acc;
-        }, {});
+        const opfSpineItemAttributesMap = createSpineItemMap(spineFromOpf);
 
         // TODO: allow this list to be ordered and refined by a user-supplied config, merging over it again
 
@@ -219,16 +222,113 @@ module.exports = async () => {
           }
         };
 
+        /* addFile */
+
         /**
          *
          * Scaffolding - can be async
          *
          */
 
+        // TODO: if there's no nav, we need to generate one and add it to assets
+
+        const updatedManifest = [].concat(updatedOpf.package.manifest.item);
+        const updatedSpine = [].concat(updatedOpf.package.spine.itemref);
+        const updatedTitle = updatedOpf.package.metadata['dc:title']._text;
+        const updatedIdentifier =
+          updatedOpf.package.metadata['dc:identifier']._text;
+
+        const isNav =
+          updatedManifest.filter(
+            item =>
+              item._attributes &&
+              item._attributes.properties &&
+              item._attributes.properties.split(' ').indexOf('nav') > -1
+          ).length > 0;
+
+        if (!isNav) {
+          log('nav not detected');
+          // compile toc.ncx and toc.xhtml from template, sending data {title: '', identifier: '', pages: [{order: 1, level: 1, title: '', href: ''}]}
+          // get pages from spine and construct data for template
+          const pagesMap = updatedManifest.reduce((acc, curr, i) => {
+            const fileExistsInSpine = id =>
+              updatedSpine.filter(
+                spineItem => spineItem._attributes.idref === id
+              ).length === 1;
+            if (!fileExistsInSpine(curr._attributes.id)) {
+              return acc;
+            }
+
+            // get the index of the current manifest item from the spine
+            const order =
+              updatedSpine.findIndex(
+                item => item._attributes.idref === curr._attributes.id
+              ) + 1;
+            const page = {
+              href: curr._attributes.href,
+              order,
+              title: `Page title for: ${curr._attributes.href}`, // TODO: get from raw source code
+              level: 1 // TODO: get from raw source code
+            };
+            acc.push(page);
+            return acc;
+          }, []);
+
+          const tocData = {
+            title: updatedTitle,
+            identifier: updatedIdentifier,
+            pages: pagesMap
+          };
+
+          // render templates
+          const renderedTocNcx = await ejs.renderFile(
+            `${TEMPLATE_PATH}/toc.ncx.ejs`,
+            tocData,
+            { async: true }
+          );
+          const renderedTocXhtml = await ejs.renderFile(
+            `${TEMPLATE_PATH}/toc.xhtml.ejs`,
+            tocData,
+            { async: true }
+          );
+
+          // write files
+          await fs.writeFile(`${OPF_DIST_DIRECTORY}/toc.ncx`, renderedTocNcx);
+          log(`${OPF_DIST_DIRECTORY}/toc.ncx written`);
+          await fs.writeFile(
+            `${OPF_DIST_DIRECTORY}/toc.xhtml`,
+            renderedTocXhtml
+          );
+          log(`${OPF_DIST_DIRECTORY}/toc.xhtml written`);
+
+          // mutate the updated manifest before it gets written
+          const manifestTocXhtmlItem = {
+            _attributes: {
+              href: 'toc.xhtml',
+              id: 'toc',
+              'media-type': 'application/xhtml+xml',
+              properties: 'nav'
+            }
+          };
+
+          const manifestTocNcxItem = {
+            _attributes: {
+              href: 'toc.ncx',
+              id: 'ncx',
+              'media-type': 'application/x-dtbncx+xml'
+            }
+          };
+          updatedOpf.package.manifest.item.push(manifestTocXhtmlItem);
+          updatedOpf.package.manifest.item.push(manifestTocNcxItem);
+          // mutate the spine to include the toc property
+          updatedOpf.package.spine._attributes = { toc: 'ncx' };
+        }
+
         const updatedOpfXml = js2xml(updatedOpf, XML_JS_OPTIONS);
         // create the directory if it hasn't been emitted by webpack yet
         await fs.ensureDir(OPF_DIST_DIRECTORY);
         await fs.writeFile(`${OPF_DIST_DIRECTORY}/content.opf`, updatedOpfXml);
+        log(`${OPF_DIST_DIRECTORY}/content.opf written`);
 
         // copy or generate the mimetype and META-INF/container.xml
         const mimetype = await promiseGlob(`${SRC_DIRECTORY}/mimetype`);
@@ -297,6 +397,7 @@ module.exports = async () => {
   };
 
   return {
+    // watch: true,
     entry: './index.js',
     output: {
       path: path.resolve(__dirname, OPF_DIST_DIRECTORY),

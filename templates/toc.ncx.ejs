@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+    <head>
+        <meta name="dtb:uid" content="<%=identifier%>" />
+        <meta name="dtb:depth" content="0" />
+        <meta name="dtb:totalPageCount" content="0" />
+        <meta name="dtb:maxPageNumber" content="0" />
+    </head>
+    <docTitle>
+        <text><%=title%></text>
+    </docTitle>
+    <navMap>
+        <% pages.forEach(function(page){%>
+        <navPoint id="navpoint<%=page.order%>" playOrder="<%=page.order%>">
+            <navLabel>
+                <text><%=page.title%></text>
+            </navLabel>
+            <content src="<%=page.href%>" />
+        </navPoint>
+        <% }); %>
+    </navMap>
+</ncx>
