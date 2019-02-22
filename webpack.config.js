@@ -315,6 +315,32 @@ module.exports = async () => {
             { async: true }
           );
 
+          // TODO: find a way to inject data and render templates before emitting
+          // hack - render emitted ejs pages with tocData
+          Object.keys(manifestMap)
+            .filter(file => path.extname(file) === '.ejs')
+            .forEach(file => {
+              const outputFilename = manifestMap[file];
+
+              const pageData = tocData.pages.filter(({ href }) => {
+                return href.indexOf(outputFilename) > -1;
+              });
+              log(pageData);
+              ejs.renderFile(
+                `${OPF_DIST_DIRECTORY}/${outputFilename}`,
+                {
+                  ...tocData,
+                  pageData
+                },
+                {},
+                (err, str) => {
+                  if (err) return log(err);
+                  fs.writeFile(`${OPF_DIST_DIRECTORY}/${outputFilename}`, str);
+                  log(`rendered ${OPF_DIST_DIRECTORY}/${outputFilename}`);
+                }
+              );
+            });
+
           // write files
           await fs.writeFile(`${OPF_DIST_DIRECTORY}/toc.ncx`, renderedTocNcx);
           log(`${OPF_DIST_DIRECTORY}/toc.ncx written`);
@@ -432,11 +458,14 @@ module.exports = async () => {
       rules: [
         // TODO: handle templating languages
         {
-          test: /\.xhtml$/,
+          test: /\.(x?html|ejs)$/,
           use: [
             {
               loader: 'file-loader',
-              options: LOADER_OPTIONS
+              options: {
+                context: OPF_DIST_DIRECTORY,
+                name: `[name].xhtml`
+              }
             },
             'extract-loader',
             {
@@ -447,6 +476,7 @@ module.exports = async () => {
             }
           ]
         },
+        // TODO: how can we inject variables
         {
           test: /\.(le|c)ss$/, // .less and .css
           use: [
