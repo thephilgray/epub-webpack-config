@@ -447,18 +447,19 @@ module.exports = async () => {
             }
           ]
         },
-        // TODO: handle preprocessors
         {
-          test: /\.css$/,
+          test: /\.(le|c)ss$/, // .less and .css
           use: [
             {
               loader: 'file-loader',
-              options: LOADER_OPTIONS
+              options: {
+                context: OPF_DIST_DIRECTORY,
+                name: `[name].css`
+              }
             },
             'extract-loader',
-            {
-              loader: 'css-loader'
-            }
+            'css-loader',
+            'less-loader'
           ]
         },
 
